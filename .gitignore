@@ -1,0 +1,15 @@
+# Go 构建产物
+/bin/
+*.test
+*.out
+
+# 本地运行数据和任务日志
+/data/
+
+# 本地配置与密钥
+/config.local.yaml
+*.pem
+*.key
+
+# 系统文件
+.DS_Store

@@ -1,0 +1,372 @@
+openapi: 3.1.0
+info:
+  title: PackPilot API
+  version: 1.1.0
+  description: |
+    PackPilot 自主 Arch Linux 打包 Agent 的完整 HTTP API。
+    除认证状态、登录和文档外，所有接口都需要 packpilot_session Cookie。
+    时间均为 RFC 3339 / ISO 8601 字符串。
+servers:
+  - url: http://localhost:8080
+    description: 本地开发服务
+tags:
+  - name: Auth
+  - name: System
+  - name: Tasks
+  - name: Files
+paths:
+  /api/auth/status:
+    get:
+      tags: [Auth]
+      summary: 查询认证开关和当前会话
+      operationId: getAuthStatus
+      security: []
+      responses:
+        "200":
+          description: 当前认证状态
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthStatus" }
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: 使用页面密码登录
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: 登录成功，Set-Cookie 返回 HttpOnly 会话
+          headers:
+            Set-Cookie:
+              description: packpilot_session 签名会话 Cookie
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authenticated]
+                properties:
+                  authenticated: { type: boolean, example: true }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: 退出并清理会话 Cookie
+      operationId: logout
+      responses:
+        "200":
+          description: 已退出
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated: { type: boolean, example: false }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/health:
+    get:
+      tags: [System]
+      summary: 查询 API、Docker 和并行 worker 状态
+      operationId: getHealth
+      responses:
+        "200":
+          description: 服务健康信息
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/tasks:
+    get:
+      tags: [Tasks]
+      summary: 按创建时间倒序列出全部任务
+      operationId: listTasks
+      responses:
+        "200":
+          description: 任务列表
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Tasks]
+      summary: 创建自主打包任务
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTaskRequest" }
+      responses:
+        "201":
+          description: 已创建并排队的任务
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/tasks/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/TaskID" }
+    get:
+      tags: [Tasks]
+      summary: 获取任务、日志和生成文件快照
+      operationId: getTask
+      responses:
+        "200":
+          description: 完整任务
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Tasks]
+      summary: 删除终态任务及其工作目录
+      operationId: deleteTask
+      responses:
+        "204": { description: 删除成功，无响应体 }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tasks/{id}/cancel:
+    parameters:
+      - { $ref: "#/components/parameters/TaskID" }
+    post:
+      tags: [Tasks]
+      summary: 取消排队或运行中的任务
+      operationId: cancelTask
+      responses:
+        "200":
+          description: 已取消
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionStatus" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tasks/{id}/retry:
+    parameters:
+      - { $ref: "#/components/parameters/TaskID" }
+    post:
+      tags: [Tasks]
+      summary: 重试失败或已取消任务
+      operationId: retryTask
+      responses:
+        "202":
+          description: 已重新排队
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionStatus" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tasks/{id}/publish:
+    parameters:
+      - { $ref: "#/components/parameters/TaskID" }
+    post:
+      tags: [Tasks]
+      summary: 将验证通过的软件包发布到自建 AUR
+      operationId: publishTask
+      responses:
+        "202":
+          description: 发布已开始
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionStatus" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tasks/{id}/events:
+    parameters:
+      - { $ref: "#/components/parameters/TaskID" }
+    get:
+      tags: [Tasks]
+      summary: 通过 SSE 订阅任务快照
+      description: "每 1.5 秒发送一个 `event: task` 事件，data 为完整 Task JSON；终态后关闭。Cookie 必须随请求发送。"
+      operationId: streamTask
+      responses:
+        "200":
+          description: text/event-stream 任务事件流
+          content:
+            text/event-stream:
+              schema: { type: string, example: "event: task\ndata: {\"id\":\"0123456789abcdef\",\"status\":\"building\"}\n\n" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tasks/{id}/files/{name}:
+    parameters:
+      - { $ref: "#/components/parameters/TaskID" }
+      - in: path
+        name: name
+        required: true
+        description: 可下载文件类型
+        schema:
+          type: string
+          enum: [PKGBUILD, SRCINFO, build.log, agent.log]
+    get:
+      tags: [Files]
+      summary: 下载生成文件或日志
+      operationId: downloadTaskFile
+      responses:
+        "200":
+          description: UTF-8 文本附件
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+          content:
+            text/plain:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: packpilot_session
+      description: 登录接口签发的 HttpOnly HMAC 会话 Cookie
+  parameters:
+    TaskID:
+      in: path
+      name: id
+      required: true
+      description: 16 位小写十六进制任务 ID
+      schema:
+        type: string
+        pattern: "^[0-9a-f]{16}$"
+        example: 0123456789abcdef
+  responses:
+    BadRequest:
+      description: 请求参数或任务状态不允许该操作
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: 未登录、密码错误或会话失效
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: 任务或文件不存在
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: 登录失败次数过多
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, example: 请先登录 }
+    AuthStatus:
+      type: object
+      required: [enabled, authenticated]
+      properties:
+        enabled: { type: boolean }
+        authenticated: { type: boolean }
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [password]
+      properties:
+        password: { type: string, minLength: 12, writeOnly: true }
+    CreateTaskRequest:
+      type: object
+      additionalProperties: false
+      required: [source_url]
+      properties:
+        source_url:
+          type: string
+          format: uri
+          pattern: "^https?://"
+          example: https://github.com/jpmens/jo
+        package_name:
+          type: string
+          maxLength: 128
+          example: jo
+        publish:
+          type: boolean
+          default: false
+          description: 构建成功后是否自动发布；还需服务端 aur.enabled=true
+    ActionStatus:
+      type: object
+      properties:
+        status: { type: string, example: queued }
+    TaskList:
+      type: object
+      required: [tasks]
+      properties:
+        tasks:
+          type: array
+          items: { $ref: "#/components/schemas/Task" }
+    TaskStatus:
+      type: string
+      enum: [queued, discovering, generating, building, succeeded, failed, canceled, publishing, published]
+    LogEntry:
+      type: object
+      required: [time, level, message]
+      properties:
+        time: { type: string, format: date-time }
+        level: { type: string, enum: [info, agent, warn, error] }
+        message: { type: string }
+    Publication:
+      type: object
+      required: [repository, branch, commit, package_url, pushed_at]
+      properties:
+        repository: { type: string }
+        branch: { type: string }
+        commit: { type: string, pattern: "^[0-9a-f]{40}$" }
+        package_url: { type: string, format: uri }
+        pushed_at: { type: string, format: date-time }
+    Task:
+      type: object
+      required: [id, source_url, status, publish_requested, attempts, logs, created_at, updated_at]
+      properties:
+        id: { type: string, pattern: "^[0-9a-f]{16}$" }
+        source_url: { type: string, format: uri }
+        package_name: { type: string }
+        version: { type: string }
+        description: { type: string }
+        upstream_url: { type: string, format: uri }
+        source_archive_url: { type: string, format: uri }
+        status: { $ref: "#/components/schemas/TaskStatus" }
+        publish_requested: { type: boolean }
+        attempts: { type: integer, minimum: 0 }
+        pkgbuild: { type: string }
+        srcinfo: { type: string }
+        build_log: { type: string }
+        error: { type: string }
+        logs:
+          type: array
+          items: { $ref: "#/components/schemas/LogEntry" }
+        publication: { $ref: "#/components/schemas/Publication" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time, nullable: true }
+    WorkerStats:
+      type: object
+      required: [concurrency, running, queued]
+      properties:
+        concurrency: { type: integer, minimum: 1 }
+        running: { type: integer, minimum: 0 }
+        queued: { type: integer, minimum: 0 }
+    Health:
+      type: object
+      required: [status, docker, worker, time]
+      properties:
+        status: { type: string, example: ok }
+        docker: { type: string, example: ok }
+        worker: { $ref: "#/components/schemas/WorkerStats" }
+        time: { type: string, format: date-time }
+security:
+  - sessionCookie: []

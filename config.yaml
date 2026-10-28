@@ -1,0 +1,85 @@
+# AUR PKGBUILD Agent 主配置。密钥建议通过环境变量注入，不要提交真实密钥。
+server:
+  # Go API 监听地址。
+  address: ":8080"
+  # 允许访问 API 的 Next.js 地址。
+  frontend_origin: "http://localhost:3000"
+
+auth:
+  # 仅限受信本地环境可设为 true；公网部署必须保持 false。
+  disabled: false
+  # 页面密码至少 12 位，通过环境变量注入。
+  password_env: "PACKPILOT_PASSWORD"
+  # 会话签名密钥；留空时由页面密码派生，生产环境建议单独设置。
+  session_secret_env: "PACKPILOT_SESSION_SECRET"
+  # 登录会话有效期。
+  session_ttl: 24h
+  # HTTPS 部署必须设为 true；localhost 开发可保持 false。
+  cookie_secure: false
+
+llm:
+  # Anthropic 兼容接口根地址，程序会追加 /v1/messages。
+  base_url: "https://api.minimax.cn/anthropic"
+  # 从这个环境变量读取 API 密钥。
+  api_key_env: "MINIMAX_API_KEY"
+  # 也可使用 api_key: "${MINIMAX_API_KEY}"，但不建议直接填写密钥。
+  model: "MiniMax-M2.5"
+  max_tokens: 8192
+  max_rounds: 12
+  timeout: 180s
+
+http:
+  # Agent 和 LLM 共用代理，例如 http://127.0.0.1:7890 或 socks5://127.0.0.1:7890。
+  # 也可写为 ${HTTPS_PROXY}；留空时尊重系统代理环境变量。
+  proxy_url: ""
+  # 逗号分隔的直连规则，支持域名、IP、CIDR 和 *。
+  no_proxy: "localhost,127.0.0.1,::1"
+  # 抓取官网、GitHub 元数据和源码信息的限制。
+  timeout: 45s
+  max_response_bytes: 4194304
+  user_agent: "AUR-PKGBUILD-Agent/1.0"
+
+worker:
+  # 同时执行的 Agent 任务数。
+  concurrency: 2
+
+storage:
+  # 任务 JSON、构建日志和 PKGBUILD 的保存目录。
+  directory: "./data"
+
+docker:
+  # Arch 官方构建镜像。
+  image: "archlinux:base-devel"
+  cpus: "2"
+  memory: "4g"
+  pids: 512
+  # 单次构建超时，失败后 Agent 会读取日志并尝试修复。
+  timeout: 20m
+  # 构建需要下载依赖，默认开启容器网络。
+  network: true
+  # 容器下载代理；留空继承 http.proxy_url。
+  # Linux 宿主机代理示例：http://host.docker.internal:7890，不能使用容器内的 127.0.0.1。
+  proxy_url: ""
+  # 容器内直连规则；留空继承 http.no_proxy。
+  no_proxy: "localhost,127.0.0.1,::1"
+
+aur:
+  # 总开关；只有这里和任务发布请求同时开启才会推送。
+  enabled: false
+  # 自建 aurweb 的网页地址和 SSH 服务。
+  web_url: "http://localhost:8000"
+  # 可选仓库模板，{pkg} 会替换为包名；留空则使用标准 aurweb SSH 地址。
+  repository_url: ""
+  ssh_user: "aur"
+  ssh_host: "localhost"
+  ssh_port: 2222
+  # SSH 私钥路径，也可以使用 ${AUR_SSH_PRIVATE_KEY}。
+  private_key: ""
+  # 建议配置 known_hosts 文件，避免信任未知主机。
+  known_hosts: ""
+  branch: "master"
+  git_name: "AUR Agent"
+  git_email: "aur-agent@localhost"
+  # HTTP(S) Git 凭据；仅 repository_url 使用 http/https 时需要 token。
+  git_username: ""
+  git_token_env: "AUR_GIT_TOKEN"

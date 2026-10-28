@@ -1,0 +1,52 @@
+# 复制为 config.yaml 后按环境修改；所有敏感值均可用 ${环境变量名} 注入。
+server:
+  address: ":8080"
+  frontend_origin: "http://localhost:3000"
+auth:
+  disabled: false
+  password_env: "PACKPILOT_PASSWORD"
+  session_secret_env: "PACKPILOT_SESSION_SECRET"
+  session_ttl: 24h
+  cookie_secure: false
+llm:
+  base_url: "https://api.minimax.cn/anthropic"
+  api_key_env: "MINIMAX_API_KEY"
+  model: "MiniMax-M2.5"
+  max_tokens: 8192
+  max_rounds: 12
+  timeout: 180s
+http:
+  # Agent 与 LLM 代理，支持 http、https、socks5，可用 ${HTTPS_PROXY} 注入。
+  proxy_url: ""
+  no_proxy: "localhost,127.0.0.1,::1"
+  timeout: 45s
+  max_response_bytes: 4194304
+  user_agent: "AUR-PKGBUILD-Agent/1.0"
+worker:
+  concurrency: 2
+storage:
+  directory: "./data"
+docker:
+  image: "archlinux:base-devel"
+  cpus: "2"
+  memory: "4g"
+  pids: 512
+  timeout: 20m
+  network: true
+  # 留空继承 http 代理；宿主机代理通常为 http://host.docker.internal:7890。
+  proxy_url: ""
+  no_proxy: "localhost,127.0.0.1,::1"
+aur:
+  enabled: false
+  web_url: "http://localhost:8000"
+  repository_url: ""
+  ssh_user: "aur"
+  ssh_host: "localhost"
+  ssh_port: 2222
+  private_key: "${AUR_SSH_PRIVATE_KEY}"
+  known_hosts: "${AUR_KNOWN_HOSTS}"
+  branch: "master"
+  git_name: "AUR Agent"
+  git_email: "aur-agent@localhost"
+  git_username: ""
+  git_token_env: "AUR_GIT_TOKEN"
